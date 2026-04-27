@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { ChevronRight, ArrowLeft, Loader2 } from 'lucide-react';
+export const dynamic = 'force-dynamic'; // This tells Vercel to skip static generation and wait for the browser
 
 export default function ArticlesPage() {
     const [articles, setArticles] = useState<any[]>([]);
