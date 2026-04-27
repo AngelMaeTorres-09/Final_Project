@@ -2,49 +2,72 @@ import Link from 'next/link';
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white selection:bg-blue-500/30">
-      {/* Decorative Background Element */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent -z-10" />
+    <div className="min-h-screen bg-black text-white selection:bg-purple-500/30 overflow-hidden">
+      {/* Background Aesthetic Elements */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-purple-900/20 blur-[120px] rounded-full -z-10" />
 
-      {/* Main Content Container */}
-      <main className="flex flex-col items-center justify-center min-h-screen px-6 text-center">
+      {/* Navbar */}
+      <nav className="flex justify-between items-center px-8 py-6 max-w-7xl mx-auto">
+        <div className="text-2xl font-extrabold text-purple-600 tracking-tighter">
+          vibe.
+        </div>
+        <Link href="/auth">
+          <button className="text-sm font-medium hover:text-purple-400 transition-colors">
+            Log In
+          </button>
+        </Link>
+      </nav>
 
-        {/* Requirement: Application Title [cite: 43] */}
-        <div className="space-y-4">
-          <h1 className="text-6xl md:text-7xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white to-gray-400">
-            Machine Learning Hub
-          </h1>
-
-          {/* Requirement: Short Description [cite: 44, 46] */}
-          <p className="max-w-xl mx-auto text-lg md:text-xl text-gray-400 leading-relaxed">
-            A simple integrated platform for data science and system architecture.
-            Connect your frontend to Supabase and deploy seamlessly with Vercel. [cite: 151]
-          </p>
+      {/* Hero Section */}
+      <main className="flex flex-col items-center justify-center pt-20 pb-32 px-4 text-center">
+        <div className="inline-block px-4 py-1.5 mb-6 text-sm font-medium tracking-wide text-purple-400 uppercase bg-purple-400/10 border border-purple-400/20 rounded-full">
+          The Future of Intelligence
         </div>
 
-        {/* Requirement: Button/Link to Login Page [cite: 45, 84] */}
-        <div className="mt-10">
-          <Link
-            href="/auth"
-            className="group relative inline-flex items-center justify-center px-8 py-4 font-bold text-white transition-all duration-200 bg-blue-600 font-pj rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)]"
-          >
-            Get Started
-            <svg
-              className="w-5 h-5 ml-2 -mr-1 transition-transform group-hover:translate-x-1"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
+        <h1 className="text-6xl md:text-8xl font-extrabold mb-6 tracking-tight bg-gradient-to-b from-white to-gray-500 bg-clip-text text-transparent">
+          Machine Learning <br />
+          <span className="text-purple-600">Perfected.</span>
+        </h1>
+
+        <p className="text-gray-400 text-lg md:text-xl max-w-2xl mb-10 leading-relaxed">
+          Explore the next frontier of AI. Our platform provides high-performance
+          integrated tools for ML enthusiasts to collaborate, train, and deploy
+          models in a purple-tinted digital ecosystem.
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-4">
+          <Link href="/auth">
+            <button className="bg-purple-600 hover:bg-purple-700 text-white px-10 py-4 rounded-xl font-bold text-lg transition-all shadow-lg shadow-purple-500/20 active:scale-95">
+              Get Started Free
+            </button>
           </Link>
+          <button className="bg-[#121212] border border-white/10 hover:border-white/20 px-10 py-4 rounded-xl font-bold text-lg transition-all">
+            View Docs
+          </button>
         </div>
 
-        {/* Lab Info Footer (Optional but helpful for Demo) [cite: 129] */}
-        <footer className="absolute bottom-8 text-sm text-gray-600 font-mono">
-          Laboratory Exercise No. 3 | System Integration & Architecture [cite: 1, 3]
-        </footer>
+        {/* Feature Preview Elements */}
+        <div className="mt-24 grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl w-full">
+          {[
+            { title: "Neural Sync", desc: "Collaborate on models in real-time." },
+            { title: "Quantum Compute", desc: "Access high-tier GPU clusters." },
+            { title: "Auto-Deploy", desc: "One-click deployment for your API." }
+          ].map((feature, i) => (
+            <div key={i} className="p-8 bg-[#0a0a0a] border border-white/5 rounded-2xl text-left hover:border-purple-500/40 transition-colors group">
+              <div className="w-10 h-10 bg-purple-600/20 rounded-lg mb-4 flex items-center justify-center text-purple-500 group-hover:scale-110 transition-transform">
+                ✦
+              </div>
+              <h3 className="text-xl font-bold mb-2">{feature.title}</h3>
+              <p className="text-gray-500 text-sm">{feature.desc}</p>
+            </div>
+          ))}
+        </div>
       </main>
+
+      {/* Footer Decoration */}
+      <footer className="border-t border-white/5 py-12 text-center text-gray-600 text-sm">
+        &copy; 2026 Vibe ML Hub. Built for the next generation.
+      </footer>
     </div>
   );
 }
