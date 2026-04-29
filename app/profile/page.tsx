@@ -7,10 +7,11 @@ import {
     School,
     Phone,
     Calendar,
-    VenusAndMars, // Fixed export name here
+    VenusAndMars,
     RefreshCw,
     Edit,
-    Loader2
+    Loader2,
+    ShieldCheck
 } from 'lucide-react';
 
 export default function ProfilePage() {
@@ -18,6 +19,8 @@ export default function ProfilePage() {
     const [profile, setProfile] = useState<any>(null);
     const [uploading, setUploading] = useState(false);
     const [updatedFields, setUpdatedFields] = useState<any>({});
+
+    const isAdmin = profile?.role === 'admin' || profile?.is_admin;
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -27,18 +30,38 @@ export default function ProfilePage() {
 
     const fetchProfile = async () => {
         try {
+            setLoading(true);
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
-            const { data } = await supabase
+            let { data, error } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', user.id)
                 .single();
 
+            if (error && error.code === 'PGRST116') {
+                const newProfile = {
+                    id: user.id,
+                    full_name: user.email?.split('@')[0] || 'New User',
+                    avatar_url: null,
+                    is_admin: false,
+                    role: 'user',
+                    updated_at: new Date().toISOString(),
+                };
+
+                const { data: createdData, error: createError } = await supabase
+                    .from('profiles')
+                    .insert(newProfile)
+                    .select()
+                    .single();
+
+                if (!createError) data = createdData;
+            }
+
             if (data) {
                 setProfile(data);
-                setUpdatedFields(data);
+                setUpdatedFields(data); // This loads existing DB values into the input fields
             }
         } catch (error) {
             console.error("Profile fetch error:", error);
@@ -54,17 +77,14 @@ export default function ProfilePage() {
     const handleUploadPhoto = async (event: any) => {
         try {
             setUploading(true);
-            if (!event.target.files || event.target.files.length === 0) {
-                throw new Error('You must select an image to upload.');
-            }
-
+            if (!event.target.files || event.target.files.length === 0) return;
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error("No user found.");
 
             const file = event.target.files[0];
             const fileExt = file.name.split('.').pop();
-            const fileName = `${user.id}.${fileExt}`;
-            const filePath = `${user.id}/${fileName}`;
+            const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+            const filePath = `avatars/${fileName}`;
 
             const { error: uploadError } = await supabase.storage
                 .from('avatars')
@@ -78,156 +98,159 @@ export default function ProfilePage() {
 
             const { error: updateError } = await supabase
                 .from('profiles')
-                .update({ avatar_url: publicUrl })
+                .update({
+                    avatar_url: publicUrl,
+                    updated_at: new Date().toISOString()
+                })
                 .eq('id', user.id);
 
             if (updateError) throw updateError;
-
             setProfile((prev: any) => ({ ...prev, avatar_url: publicUrl }));
-            setUpdatedFields((prev: any) => ({ ...prev, avatar_url: publicUrl }));
             alert('Photo updated successfully!');
-
         } catch (error: any) {
-            alert("Error uploading: " + error.message);
+            alert("Error: " + error.message);
         } finally {
             setUploading(false);
         }
     };
 
+    // --- UPDATED SYNC LOGIC ---
     const handleSyncProfile = async () => {
         setLoading(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
 
-        const { error } = await supabase
-            .from('profiles')
-            .update(updatedFields)
-            .eq('id', user.id);
+            // We prepare the update object specifically with the fields 
+            const updatePayload = {
+                full_name: updatedFields.full_name,
+                age: updatedFields.age,
+                gender: updatedFields.gender,
+                school_institution: updatedFields.school_institution,
+                phone_number: updatedFields.phone_number,
+                current_address: updatedFields.current_address,
+                updated_at: new Date().toISOString()
+            };
 
-        if (error) {
+            const { error } = await supabase
+                .from('profiles')
+                .update(updatePayload)
+                .eq('id', user.id);
+
+            if (error) throw error;
+
+            alert("Profile metadata updated successfully!");
+            await fetchProfile(); // Refresh UI with new data
+        } catch (error: any) {
             console.error(error);
-            alert("Error syncing profile!");
-        } else {
-            await fetchProfile();
-            alert("Profile Synced!");
+            alert("Update failed: " + error.message);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const fieldDefinitions = [
         { key: 'full_name', label: 'Full Name', icon: UserIcon, placeholder: 'Enter Name' },
         { key: 'age', label: 'Age', icon: Calendar, placeholder: '21', type: 'number' },
-        { key: 'gender', label: 'Gender', icon: VenusAndMars, placeholder: 'Gender' }, // Fixed icon here
+        { key: 'gender', label: 'Gender', icon: VenusAndMars, placeholder: 'Gender' },
         { key: 'school_institution', label: 'School / Institution', icon: School, placeholder: 'University Name' },
         { key: 'phone_number', label: 'Phone Number', icon: Phone, placeholder: '09xxxxxxxxx' },
         { key: 'current_address', label: 'Current Address', icon: MapPin, placeholder: 'City, Country' },
     ];
 
     return (
-        <div className="flex-1 bg-black text-white font-sans p-10 min-h-screen">
-            <div className="flex items-start justify-between mb-16 max-w-7xl mx-auto">
-                <div>
-                    <h1 className="text-6xl font-black text-white tracking-tighter italic uppercase">My Vibe</h1>
-                    <p className="text-gray-500 mt-2 text-sm">Manage your identity and terminal settings.</p>
-                </div>
-                <div className="flex items-center gap-2 bg-[#111] border border-white/10 px-4 py-2 rounded-full shadow-inner text-xs font-mono text-purple-400">
-                    <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-                    SYSTEM STATUS: ONLINE
-                </div>
-            </div>
+        <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white selection:bg-purple-500/30 font-sans">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(124,58,237,0.24),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(168,85,247,0.14),_transparent_25%)]" />
+            <div className="pointer-events-none absolute left-[-120px] top-24 h-72 w-72 rounded-full bg-purple-600/10 blur-3xl" />
+            <div className="pointer-events-none absolute right-[-100px] bottom-24 h-72 w-72 rounded-full bg-fuchsia-500/10 blur-3xl" />
 
-            {loading && !profile ? (
-                <div className="flex items-center justify-center pt-20"><Loader2 className="animate-spin text-purple-500" size={40} /></div>
-            ) : (
-                <div className="max-w-7xl mx-auto grid grid-cols-12 gap-10">
-                    <div className="col-span-4 bg-[#0a0a0a] border border-white/5 p-8 rounded-[2.5rem] shadow-2xl flex flex-col items-center justify-center text-center">
-
-                        <div className="relative mb-6 group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                            {profile?.avatar_url ? (
-                                <img
-                                    src={profile.avatar_url}
-                                    alt="Avatar"
-                                    className="w-36 h-36 rounded-full object-cover border-4 border-[#111] shadow-xl group-hover:border-purple-600/50 transition-all"
-                                />
-                            ) : (
-                                <div className="w-36 h-36 bg-[#111] border-4 border-[#111] rounded-full flex items-center justify-center text-gray-700 shadow-xl group-hover:border-purple-600/50 transition-all">
-                                    <UserIcon size={56} />
-                                </div>
-                            )}
-
-                            <div className="absolute inset-0 bg-black/70 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-2">
-                                {uploading ? (
-                                    <Loader2 className="animate-spin text-white" size={24} />
-                                ) : (
-                                    <>
-                                        <Edit size={16} className="text-purple-400" />
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-white text-center">Change<br />Photo</span>
-                                    </>
-                                )}
-                            </div>
-
-                            <input
-                                type="file"
-                                accept="image/*"
-                                ref={fileInputRef}
-                                onChange={handleUploadPhoto}
-                                disabled={uploading}
-                                className="hidden"
-                            />
-                        </div>
-
-                        <h2 className="text-2xl font-black text-white tracking-tight leading-tight">{profile?.full_name || 'Guest User'}</h2>
-                        <p className="text-[10px] font-black text-purple-400 mt-2 uppercase tracking-[0.2em] bg-purple-900/30 px-3 py-1 rounded-md">Verified Identity</p>
-
-                        <div className="w-full h-px bg-white/5 my-8"></div>
-
-                        <div className="w-full space-y-4 text-left px-4">
-                            <div className="flex justify-between items-center text-xs">
-                                <span className="text-gray-500 uppercase font-bold tracking-wider">Account Tier</span>
-                                <span className="font-black text-purple-500 uppercase tracking-widest">{profile?.account_tier || 'PRO'}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-xs">
-                                <span className="text-gray-500 uppercase font-bold tracking-wider">Server Node</span>
-                                <span className="font-mono text-gray-400 uppercase">{profile?.server_node || 'US-EAST-1'}</span>
-                            </div>
-                        </div>
+            <main className="relative z-10 max-w-7xl mx-auto px-6 py-12 lg:px-8">
+                <div className="mb-12 flex flex-col gap-6 rounded-[2.5rem] border border-white/10 bg-white/5 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl lg:flex-row lg:items-end lg:justify-between">
+                    <div className="max-w-3xl">
+                        <p className="text-xs uppercase tracking-[0.35em] text-purple-300">Profile Control Center</p>
+                        <h1 className="mt-4 text-5xl font-black tracking-tight text-white">Your personal vibe</h1>
+                        <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400">Update your profile details, upload your avatar, and manage permissions with a premium interface.</p>
                     </div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <button onClick={fetchProfile} className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10">Refresh profile</button>
+                        <div className="rounded-full bg-purple-500/10 px-5 py-3 text-sm font-black uppercase tracking-[0.35em] text-purple-200">{isAdmin ? 'Admin' : 'User'}</div>
+                    </div>
+                </div>
 
-                    <div className="col-span-8 bg-[#0a0a0a] border border-white/5 p-10 rounded-[2.5rem] shadow-2xl relative">
-                        <div className="grid grid-cols-2 gap-x-10 gap-y-6">
-                            {fieldDefinitions.map((field, idx) => (
-                                <div key={idx} className={`${idx === 3 || idx === 5 ? 'col-span-2' : ''}`}>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <field.icon className="text-purple-500" size={16} />
-                                        <label className="text-[10px] font-black uppercase text-gray-500 tracking-widest">{field.label}</label>
+                {loading && !profile ? (
+                    <div className="flex items-center justify-center py-20"><Loader2 className="animate-spin text-purple-500" size={44} /></div>
+                ) : (
+                    <div className="grid gap-10 xl:grid-cols-[360px_1fr]">
+                        <aside className="rounded-[2.5rem] border border-white/10 bg-[#090a0e]/95 p-8 shadow-2xl shadow-black/30">
+                            <div className="flex flex-col items-center gap-6 text-center">
+                                <div className="relative cursor-pointer group" onClick={() => fileInputRef.current?.click()}>
+                                    <div className={`relative overflow-hidden rounded-full ${profile?.is_admin ? 'bg-gradient-to-tr from-purple-600 to-blue-500 p-1 shadow-[0_0_30px_rgba(124,58,237,0.25)]' : 'bg-white/10 p-1'}`}>
+                                        <div className="h-40 w-40 overflow-hidden rounded-full bg-[#111]"></div>
+                                        {profile?.avatar_url ? (
+                                            <img src={profile.avatar_url} alt="Avatar" className="absolute inset-0 h-full w-full object-cover" />
+                                        ) : (
+                                            <div className="absolute inset-0 flex items-center justify-center text-white/80"><UserIcon size={56} /></div>
+                                        )}
                                     </div>
-                                    <input
-                                        type={field.type || 'text'}
-                                        value={updatedFields[field.key] || ''}
-                                        placeholder={field.placeholder}
-                                        onChange={(e) => handleInputChange(field.key, e.target.value)}
-                                        className="w-full bg-black border border-white/10 rounded-2xl px-5 py-4 text-sm focus:ring-1 focus:ring-purple-600 focus:border-purple-600/50 outline-none transition-all placeholder:text-gray-700 font-bold"
-                                    />
+                                    <div className="absolute inset-0 hidden items-center justify-center rounded-full bg-black/70 text-sm uppercase tracking-[0.35em] text-white/80 transition-all group-hover:flex">
+                                        {uploading ? <Loader2 className="animate-spin" size={20} /> : 'Change photo'}
+                                    </div>
                                 </div>
-                            ))}
-                        </div>
+                                <div>
+                                    <h2 className="text-3xl font-black tracking-tight text-white">{profile?.full_name || 'Guest User'}</h2>
+                                    <p className="mt-2 text-xs uppercase tracking-[0.35em] text-slate-400">{isAdmin ? 'SYSTEM ADMINISTRATOR' : 'VERIFIED USER'}</p>
+                                </div>
+                            </div>
 
-                        <div className="flex items-center justify-between mt-12 pt-8 border-t border-white/5">
-                            <p className="text-[10px] text-gray-600 font-mono">
-                                LAST SYNCHRONIZED: {profile?.updated_at ? new Date(profile.updated_at).toLocaleTimeString() : 'WAITING...'}
-                            </p>
-                            <button
-                                onClick={handleSyncProfile}
-                                disabled={loading}
-                                className="bg-white text-black text-xs font-black py-4 px-10 rounded-full hover:bg-purple-600 hover:text-white transition-all uppercase tracking-widest flex items-center gap-3 shadow-lg"
-                            >
-                                {loading ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
-                                Sync Profile
-                            </button>
-                        </div>
+                            <div className="mt-10 space-y-4">
+                                <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                                    <p className="text-[10px] uppercase tracking-[0.35em] text-purple-300">Access level</p>
+                                    <p className="mt-3 text-2xl font-black text-white">{isAdmin ? 'Level 100' : 'Level 01'}</p>
+                                </div>
+                                <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                                    <p className="text-[10px] uppercase tracking-[0.35em] text-purple-300">Member since</p>
+                                    <p className="mt-3 text-sm text-slate-300">{profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'}</p>
+                                </div>
+                            </div>
+                        </aside>
+
+                        <section className="rounded-[2.5rem] border border-white/10 bg-[#090a0e]/95 p-10 shadow-2xl shadow-black/30">
+                            <div className="grid gap-6 md:grid-cols-2">
+                                {fieldDefinitions.map((field, idx) => (
+                                    <div key={idx} className={`${idx === 3 || idx === 5 ? 'md:col-span-2' : ''}`}>
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <field.icon className={profile?.is_admin ? 'text-purple-500' : 'text-sky-400'} size={18} />
+                                            <label className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">{field.label}</label>
+                                        </div>
+                                        <input
+                                            type={field.type || 'text'}
+                                            value={updatedFields[field.key] || ''}
+                                            placeholder={field.placeholder}
+                                            onChange={(e) => handleInputChange(field.key, e.target.value)}
+                                            className="w-full rounded-3xl border border-white/10 bg-[#07101a] px-5 py-4 text-sm text-white outline-none transition focus:border-purple-500"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="mt-10 flex flex-col gap-4 border-t border-white/10 pt-8 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-[10px] uppercase tracking-[0.35em] text-slate-500">Last sync</p>
+                                    <p className="mt-2 text-sm text-slate-300">{profile?.updated_at ? new Date(profile.updated_at).toLocaleString() : 'Pending update'}</p>
+                                </div>
+                                <button
+                                    onClick={handleSyncProfile}
+                                    disabled={loading}
+                                    className="inline-flex items-center justify-center gap-3 rounded-full bg-gradient-to-r from-purple-500 to-fuchsia-500 px-6 py-4 text-sm font-black uppercase tracking-[0.35em] text-white shadow-xl shadow-purple-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {loading ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+                                    Update Profile
+                                </button>
+                            </div>
+                        </section>
                     </div>
-                </div>
-            )}
+                )}
+            </main>
         </div>
     );
 }

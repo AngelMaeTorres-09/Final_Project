@@ -1,15 +1,19 @@
-'use client';
+﻿'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 export default function AuthPage() {
     const router = useRouter();
+    const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
+    const [accountType, setAccountType] = useState<'user' | 'admin'>('user');
+    const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [message, setMessage] = useState('');
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [processing, setProcessing] = useState(false);
 
     useEffect(() => {
         const checkUser = async () => {
@@ -20,26 +24,88 @@ export default function AuthPage() {
             }
             setLoading(false);
         };
+
+        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+            if (session?.user) {
+                setIsLoggedIn(true);
+                setEmail(session.user.email || '');
+            } else {
+                setIsLoggedIn(false);
+            }
+        });
+
         checkUser();
+
+        return () => {
+            authListener.subscription.unsubscribe();
+        };
     }, []);
 
     const handleAuth = async (type: 'LOGIN' | 'SIGNUP') => {
+        if (processing) return;
+        setProcessing(true);
         setMessage('Processing...');
-        const { data, error } = type === 'LOGIN'
-            ? await supabase.auth.signInWithPassword({ email, password })
-            : await supabase.auth.signUp({ email, password });
 
-        if (error) {
-            setMessage(error.message);
-        } else {
-            if (type === 'SIGNUP') {
-                setMessage('Account created! Check your email to verify.');
-            } else {
-                setIsLoggedIn(true);
-                // Optional: You can still redirect to dashboard here if you want
-                // router.push('/dashboard'); 
+        if (type === 'LOGIN') {
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            setProcessing(false);
+
+            if (error) {
+                setMessage(error.message);
+                return;
             }
+
+            if (data.user) {
+                setIsLoggedIn(true);
+                setMessage(`Login successful as ${accountType === 'admin' ? 'Admin' : 'User'}.`);
+                router.push('/dashboard');
+            } else {
+                setMessage('Login successful.');
+            }
+            return;
         }
+
+        if (!username.trim()) {
+            setMessage('Please enter a username for registration.');
+            setProcessing(false);
+            return;
+        }
+
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) {
+            setProcessing(false);
+            setMessage(error.message);
+            return;
+        }
+
+        const user = data.user;
+        if (!user) {
+            setProcessing(false);
+            setMessage('Account created! Check your email to verify your address.');
+            return;
+        }
+
+        try {
+            const { error: profileError } = await supabase.from('profiles').insert({
+                id: user.id,
+                full_name: username.trim(),
+                email,
+                is_admin: accountType === 'admin',
+                role: accountType === 'admin' ? 'admin' : 'user',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            });
+
+            if (profileError) {
+                console.warn('Profile creation failed:', profileError.message);
+            }
+        } catch (err) {
+            console.warn('Profile creation error:', err);
+        }
+
+        setProcessing(false);
+        setMessage('Account created! Check your email to verify.');
+        setAuthMode('LOGIN');
     };
 
     const handleLogout = async () => {
@@ -48,95 +114,118 @@ export default function AuthPage() {
         setMessage('Successfully logged out.');
     };
 
-    if (loading) return <div className="min-h-screen bg-black" />;
+    if (loading) return <div className="min-h-screen bg-[#050505]" />;
 
     return (
-        <div className="min-h-screen bg-black flex items-center justify-center p-4">
-            <div className="max-w-6xl w-full flex flex-col lg:flex-row items-center justify-between gap-12 lg:gap-8">
+        <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(124,58,237,0.2),_transparent_25%),radial-gradient(circle_at_bottom_left,_rgba(168,85,247,0.12),_transparent_20%)] pointer-events-none" />
+            <div className="absolute right-0 top-24 h-72 w-72 rounded-full bg-purple-600/10 blur-3xl" />
+            <div className="absolute left-0 bottom-24 h-56 w-56 rounded-full bg-fuchsia-500/10 blur-3xl" />
 
-                {/* Brand Side */}
-                <div className="text-center lg:text-left lg:w-1/2">
-                    <h1 className="text-6xl lg:text-7xl font-extrabold text-purple-600 tracking-tighter mb-4">
-                        vibe.
+            <div className="relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col gap-12 px-6 py-12 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+                <div className="lg:w-1/2">
+                    <span className="inline-flex rounded-full border border-purple-500/20 bg-purple-500/10 px-4 py-1 text-xs uppercase tracking-[0.35em] text-purple-200 shadow-sm shadow-purple-500/10">
+                        Welcome to vibe
+                    </span>
+                    <h1 className="mt-8 text-5xl font-black tracking-tight text-white sm:text-6xl lg:text-7xl">
+                        Create, connect, and collaborate with a modern AI workspace.
                     </h1>
-                    <p className="text-2xl lg:text-3xl text-gray-300 font-medium leading-tight">
-                        Connect with the world in <span className="text-purple-500">ultra-violet</span>.
+                    <p className="mt-6 max-w-xl text-base leading-8 text-slate-300 sm:text-lg">
+                        A seamless login and registration experience for users and admins, complete with rich role controls and a polished design that feels premium.
                     </p>
+
+                    <div className="mt-10 grid gap-4 sm:grid-cols-2">
+                        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-[0_25px_80px_-50px_rgba(255,255,255,0.24)] backdrop-blur-xl">
+                            <p className="text-sm uppercase tracking-[0.35em] text-purple-300">Faster onboarding</p>
+                            <p className="mt-4 text-sm text-slate-300">Create accounts quickly and get straight to your dashboard.</p>
+                        </div>
+                        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-[0_25px_80px_-50px_rgba(255,255,255,0.24)] backdrop-blur-xl">
+                            <p className="text-sm uppercase tracking-[0.35em] text-purple-300">Admin ready</p>
+                            <p className="mt-4 text-sm text-slate-300">Switch between user and admin flows with one tap.</p>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Card Side */}
-                <div className="w-full max-w-[400px]">
-                    {isLoggedIn ? (
-                        /* LOGGED IN VIEW */
-                        <div className="bg-[#121212] p-8 rounded-2xl shadow-2xl border border-purple-500/30 text-center animate-in fade-in zoom-in duration-300">
-                            <h2 className="text-3xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-fuchsia-500 bg-clip-text text-transparent">
-                                Welcome back
-                            </h2>
-                            <p className="mb-8 text-gray-400 text-sm">
-                                You are signed in as: <br />
-                                <span className="text-purple-300 font-mono">{email}</span>
-                            </p>
-
-                            <div className="space-y-3">
-                                <button
-                                    onClick={() => router.push('/dashboard')}
-                                    className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg font-bold transition-all shadow-lg shadow-purple-900/20"
-                                >
-                                    Go to Dashboard
-                                </button>
-                                <button
-                                    onClick={handleLogout}
-                                    className="w-full bg-transparent border border-red-500/50 text-red-500 hover:bg-red-500/10 py-3 rounded-lg font-bold transition-all"
-                                >
-                                    Log Out
-                                </button>
+                <div className="lg:w-[420px]">
+                    <div className="rounded-[2rem] border border-white/10 bg-[#111111]/95 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl">
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <p className="text-sm uppercase tracking-[0.35em] text-purple-300">{isLoggedIn ? 'Account ready' : 'Sign in / Register'}</p>
+                                <h2 className="mt-3 text-3xl font-black text-white">{isLoggedIn ? 'Welcome back' : 'Access your vibe'}</h2>
                             </div>
+                            <div className="rounded-3xl bg-white/5 px-3 py-2 text-xs uppercase tracking-[0.35em] text-slate-200">{accountType === 'admin' ? 'Admin mode' : 'User mode'}</div>
                         </div>
-                    ) : (
-                        /* LOGGED OUT VIEW (The Form) */
-                        <div className="bg-[#121212] p-5 rounded-xl shadow-2xl border border-white/5 animate-in fade-in slide-in-from-right duration-500">
-                            <div className="space-y-4">
-                                <input
-                                    type="email"
-                                    placeholder="Email address"
-                                    className="w-full p-4 bg-[#1e1e1e] border border-gray-800 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-600 transition-all placeholder:text-gray-500"
-                                    onChange={(e) => setEmail(e.target.value)}
-                                />
-                                <input
-                                    type="password"
-                                    placeholder="Password"
-                                    className="w-full p-4 bg-[#1e1e1e] border border-gray-800 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-600 transition-all placeholder:text-gray-500"
-                                    onChange={(e) => setPassword(e.target.value)}
-                                />
 
-                                <button
-                                    onClick={() => handleAuth('LOGIN')}
-                                    className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg text-xl font-bold transition-colors shadow-lg shadow-purple-900/20"
-                                >
-                                    Log In
-                                </button>
-
-                                <div className="text-center border-b border-gray-800 pb-6">
-                                    <a href="#" className="text-purple-500 text-sm hover:underline">Forgotten password?</a>
-                                </div>
-
-                                <div className="pt-2 flex justify-center">
-                                    <button
-                                        onClick={() => handleAuth('SIGNUP')}
-                                        className="bg-[#2c2c2c] hover:bg-[#3d3d3d] text-white px-6 py-3 rounded-lg font-bold text-md transition-all border border-purple-500/20"
-                                    >
-                                        Create new account
+                        {isLoggedIn ? (
+                            <div className="mt-8 space-y-4 text-center">
+                                <p className="text-sm text-slate-300">You are signed in as</p>
+                                <p className="text-lg font-semibold text-white">{email}</p>
+                                <div className="grid gap-3 pt-6">
+                                    <button onClick={() => router.push('/dashboard')} className="rounded-2xl bg-purple-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-purple-400">
+                                        Go to Dashboard
+                                    </button>
+                                    <button onClick={handleLogout} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-purple-200 transition hover:bg-white/10">
+                                        Log out
                                     </button>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        ) : (
+                            <div className="mt-8 space-y-4">
+                                <div className="grid grid-cols-2 rounded-3xl bg-white/5 p-1 text-xs font-black uppercase tracking-[0.35em] text-slate-300">
+                                    <button onClick={() => setAuthMode('LOGIN')} className={`rounded-3xl px-4 py-3 transition ${authMode === 'LOGIN' ? 'bg-purple-500 text-white' : 'hover:bg-white/10'}`}>
+                                        Login
+                                    </button>
+                                    <button onClick={() => setAuthMode('REGISTER')} className={`rounded-3xl px-4 py-3 transition ${authMode === 'REGISTER' ? 'bg-purple-500 text-white' : 'hover:bg-white/10'}`}>
+                                        Register
+                                    </button>
+                                </div>
 
-                    {message && (
-                        <p className={`mt-6 text-center text-sm font-medium ${message.includes('success') || message.includes('Account') || message.includes('out') ? 'text-green-400' : 'text-red-400'}`}>
-                            {message}
-                        </p>
-                    )}
+                                {authMode === 'REGISTER' && (
+                                    <label className="block text-sm text-slate-300">
+                                        Username
+                                        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Enter your display name" className="mt-2 w-full rounded-3xl border border-white/10 bg-[#111111] px-4 py-3 text-white outline-none transition focus:border-purple-500/50" />
+                                    </label>
+                                )}
+
+                                <label className="block text-sm text-slate-300">
+                                    Email
+                                    <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" className="mt-2 w-full rounded-3xl border border-white/10 bg-[#111111] px-4 py-3 text-white outline-none transition focus:border-purple-500/50" />
+                                </label>
+
+                                <label className="block text-sm text-slate-300">
+                                    Password
+                                    <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="••••••••" className="mt-2 w-full rounded-3xl border border-white/10 bg-[#111111] px-4 py-3 text-white outline-none transition focus:border-purple-500/50" />
+                                </label>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button onClick={() => setAccountType('user')} className={`rounded-3xl px-4 py-3 text-sm font-semibold transition ${accountType === 'user' ? 'bg-purple-500 text-white' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>
+                                        User
+                                    </button>
+                                    <button onClick={() => setAccountType('admin')} className={`rounded-3xl px-4 py-3 text-sm font-semibold transition ${accountType === 'admin' ? 'bg-purple-500 text-white' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>
+                                        Admin
+                                    </button>
+                                </div>
+
+                                <button onClick={() => handleAuth(authMode === 'LOGIN' ? 'LOGIN' : 'SIGNUP')} disabled={processing} className="mt-4 w-full rounded-3xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-6 py-4 text-sm font-bold text-white shadow-xl shadow-purple-500/30 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60">
+                                    {processing ? 'Processing...' : authMode === 'LOGIN' ? 'Log In' : 'Create account'}
+                                </button>
+
+                                <div className="text-center pt-4 text-sm text-slate-400">
+                                    {authMode === 'LOGIN' ? (
+                                        <button onClick={() => setAuthMode('REGISTER')} className="font-semibold text-purple-300 hover:text-purple-100">Don’t have an account? Register</button>
+                                    ) : (
+                                        <button onClick={() => setAuthMode('LOGIN')} className="font-semibold text-purple-300 hover:text-purple-100">Already have an account? Login</button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {message && (
+                            <p className={`mt-6 text-center text-sm font-medium ${message.toLowerCase().includes('success') || message.toLowerCase().includes('created') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {message}
+                            </p>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

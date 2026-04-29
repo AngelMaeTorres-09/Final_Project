@@ -10,39 +10,63 @@ export default function AdminPublish() {
     const router = useRouter();
 
     async function handlePublish() {
-        setLoading(true);
-
-        // 1. Insert the Article
-        const { data: article, error: artError } = await supabase
-            .from('articles')
-            .insert([{ title, content }])
-            .select()
-            .single();
-
-        if (artError) {
-            alert("Publishing failed: " + artError.message);
-            setLoading(false);
+        // Validation
+        if (!title.trim()) {
+            alert("Please enter an article title");
+            return;
+        }
+        if (!content.trim()) {
+            alert("Please enter article content");
             return;
         }
 
-        // 2. Trigger Dashboard Notifications for all users
-        const { data: users } = await supabase.from('profiles').select('id');
-        if (users) {
-            const notifications = users.map(u => ({
-                user_id: u.id,
-                title: "New Article Published",
-                message: `Read our latest research: ${title}`,
-                link: `/articles/${article.id}`
-            }));
-            await supabase.from('dashboard_notifications').insert(notifications);
+        setLoading(true);
+
+        try {
+            // 1. Insert the Article
+            const { data: article, error: artError } = await supabase
+                .from('articles')
+                .insert([{ 
+                    title: title.trim(), 
+                    content: content.trim(),
+                    likes_count: 0,
+                    comment_count: 0
+                }])
+                .select();
+
+            if (artError || !article || article.length === 0) {
+                alert("Publishing failed: " + (artError?.message || "No data returned"));
+                setLoading(false);
+                return;
+            }
+
+            const publishedArticle = article[0];
+
+            // 2. Create Global Notification for all users
+            const notificationMsg = `New Article Published: "${title.trim()}"`;
+            const { data: notifData, error: notifError } = await supabase.from('notifications').insert({
+                content: notificationMsg,
+                type: 'post',
+                created_at: new Date().toISOString()
+            }).select();
+
+            if (notifError) {
+                alert("Article published, but notification failed: " + notifError.message);
+                console.warn("Notification save failed:", notifError.message);
+            } else {
+                alert("Article published successfully! Notification was created.");
+            }
+
+            // 3. Clear form and redirect
+            setTitle('');
+            setContent('');
+            router.push('/articles');
+        } catch (error: any) {
+            alert("Unexpected error: " + (error?.message || "Unknown error"));
+            console.error("Publish error:", error);
+        } finally {
+            setLoading(false);
         }
-
-        // 3. Email Notification Note
-        // Note: For real emails, use Supabase Edge Functions or an 
-        // onChange Trigger to call Resend/SendGrid API.
-
-        alert("Article Live & Notifications Synced!");
-        router.push('/articles');
     }
 
     return (

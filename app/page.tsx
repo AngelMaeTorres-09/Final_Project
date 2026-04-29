@@ -1,72 +1,62 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-black text-white selection:bg-purple-500/30 overflow-hidden">
-      {/* Background Aesthetic Elements */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-purple-900/20 blur-[120px] rounded-full -z-10" />
+    <div className="relative min-h-screen overflow-hidden bg-[#050505] text-white selection:bg-purple-500/30">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(124,58,237,0.24),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(79,70,229,0.18),_transparent_25%)] pointer-events-none" />
+      <div className="absolute left-[10%] top-24 h-72 w-72 rounded-full bg-purple-500/10 blur-3xl" />
+      <div className="absolute right-[5%] top-1/4 h-60 w-60 rounded-full bg-fuchsia-500/10 blur-3xl" />
 
-      {/* Navbar */}
-      <nav className="flex justify-between items-center px-8 py-6 max-w-7xl mx-auto">
-        <div className="text-2xl font-extrabold text-purple-600 tracking-tighter">
-          vibe.
+      <nav className="relative z-10 max-w-7xl mx-auto flex items-center justify-between px-6 py-6 lg:px-8">
+        <div className="text-2xl font-black tracking-tight text-white">
+          <span className="text-purple-400">vibe</span><span className="text-white">.</span>
         </div>
-        <Link href="/auth">
-          <button className="text-sm font-medium hover:text-purple-400 transition-colors">
-            Log In
-          </button>
+        <Link href="/auth" className="rounded-full border border-purple-500/30 bg-white/5 px-5 py-3 text-sm font-semibold text-purple-200 shadow-[0_15px_50px_-30px_rgba(124,58,237,0.7)] transition hover:bg-purple-500/20 hover:text-white">
+          Sign in
         </Link>
       </nav>
 
-      {/* Hero Section */}
-      <main className="flex flex-col items-center justify-center pt-20 pb-32 px-4 text-center">
-        <div className="inline-block px-4 py-1.5 mb-6 text-sm font-medium tracking-wide text-purple-400 uppercase bg-purple-400/10 border border-purple-400/20 rounded-full">
-          The Future of Intelligence
-        </div>
+      <main className="relative z-10 flex min-h-[calc(100vh-96px)] flex-col items-center justify-center px-6 pb-24 pt-8 text-center lg:px-8">
+        <div className="mx-auto max-w-4xl">
+          <span className="inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-4 py-2 text-xs uppercase tracking-[0.35em] text-purple-200 shadow-sm shadow-purple-500/10">
+            Launch your AI experience
+          </span>
 
-        <h1 className="text-6xl md:text-8xl font-extrabold mb-6 tracking-tight bg-gradient-to-b from-white to-gray-500 bg-clip-text text-transparent">
-          Machine Learning <br />
-          <span className="text-purple-600">Perfected.</span>
-        </h1>
+          <h1 className="mt-8 text-5xl font-black tracking-tight text-white sm:text-6xl lg:text-7xl">
+            Build the next generation of <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-500">intelligent experiences</span>
+          </h1>
 
-        <p className="text-gray-400 text-lg md:text-xl max-w-2xl mb-10 leading-relaxed">
-          Explore the next frontier of AI. Our platform provides high-performance
-          integrated tools for ML enthusiasts to collaborate, train, and deploy
-          models in a purple-tinted digital ecosystem.
-        </p>
+          <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-slate-300 sm:text-xl">
+            A beautiful home for your ML workflows, from publishing ideas to sharing announcements and staying connected with your community.
+          </p>
 
-        <div className="flex flex-col sm:flex-row gap-4">
-          <Link href="/auth">
-            <button className="bg-purple-600 hover:bg-purple-700 text-white px-10 py-4 rounded-xl font-bold text-lg transition-all shadow-lg shadow-purple-500/20 active:scale-95">
-              Get Started Free
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <Link href="/auth" className="inline-flex items-center justify-center rounded-full bg-purple-500 px-8 py-4 text-base font-semibold text-white shadow-xl shadow-purple-500/20 transition hover:bg-purple-400">
+              Get started
+            </Link>
+            <button className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-8 py-4 text-base font-semibold text-slate-200 transition hover:border-purple-400/40 hover:bg-white/10">
+              Explore features
             </button>
-          </Link>
-          <button className="bg-[#121212] border border-white/10 hover:border-white/20 px-10 py-4 rounded-xl font-bold text-lg transition-all">
-            View Docs
-          </button>
-        </div>
+          </div>
 
-        {/* Feature Preview Elements */}
-        <div className="mt-24 grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl w-full">
-          {[
-            { title: "Neural Sync", desc: "Collaborate on models in real-time." },
-            { title: "Quantum Compute", desc: "Access high-tier GPU clusters." },
-            { title: "Auto-Deploy", desc: "One-click deployment for your API." }
-          ].map((feature, i) => (
-            <div key={i} className="p-8 bg-[#0a0a0a] border border-white/5 rounded-2xl text-left hover:border-purple-500/40 transition-colors group">
-              <div className="w-10 h-10 bg-purple-600/20 rounded-lg mb-4 flex items-center justify-center text-purple-500 group-hover:scale-110 transition-transform">
-                ✦
+          <div className="mt-16 grid gap-4 sm:grid-cols-3">
+            {[
+              { title: 'Live Collaboration', subtitle: 'Share updates with your team instantly.' },
+              { title: 'Intelligent Publishing', subtitle: 'Create, publish, and notify in one flow.' },
+              { title: 'Insightful History', subtitle: 'Track read/unread updates with ease.' }
+            ].map((item, index) => (
+              <div key={index} className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-left shadow-[0_25px_80px_-50px_rgba(255,255,255,0.2)] backdrop-blur-xl transition hover:border-purple-500/30 hover:bg-white/10">
+                <p className="text-sm uppercase tracking-[0.35em] text-purple-300">Feature</p>
+                <h2 className="mt-4 text-2xl font-bold text-white">{item.title}</h2>
+                <p className="mt-3 text-sm leading-7 text-slate-300">{item.subtitle}</p>
               </div>
-              <h3 className="text-xl font-bold mb-2">{feature.title}</h3>
-              <p className="text-gray-500 text-sm">{feature.desc}</p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </main>
 
-      {/* Footer Decoration */}
-      <footer className="border-t border-white/5 py-12 text-center text-gray-600 text-sm">
-        &copy; 2026 Vibe ML Hub. Built for the next generation.
+      <footer className="relative z-10 border-t border-white/10 bg-black/60 py-10 text-center text-sm text-slate-500 backdrop-blur-xl">
+        <p>© 2026 vibe. Crafted for ambitious creators and teams.</p>
       </footer>
     </div>
   );
