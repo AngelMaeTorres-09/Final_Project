@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
@@ -8,31 +8,73 @@ import {
     Sparkles, ArrowLeft, Plus, Bell, Megaphone, Menu, ChevronDown, History, Share2, Reply, Upload
 } from 'lucide-react';
 
+type Article = {
+    id: string;
+    title: string;
+    content: string;
+    created_at?: string;
+    type?: string;
+    likes_count?: number;
+    comment_count?: number;
+    author_id?: string;
+    [key: string]: unknown;
+};
+
+type CommentItem = {
+    id: string;
+    content: string;
+    created_at?: string;
+    article_id?: string;
+    user_id?: string;
+    parent_id?: string | null;
+    articles?: { title?: string }[];
+    [key: string]: unknown;
+};
+
+type NotificationItem = {
+    id: string | number;
+    content: string;
+    type: string;
+    created_at: string;
+    read: boolean;
+    [key: string]: unknown;
+};
+
+type Profile = {
+    id: string;
+    full_name?: string;
+    avatar_url?: string;
+    email?: string;
+    role?: string;
+    is_admin?: boolean;
+    [key: string]: unknown;
+};
+
 export default function Dashboard() {
-    const [articles, setArticles] = useState<any[]>([]);
-    const [recentGlobalComments, setRecentGlobalComments] = useState<any[]>([]);
+    const [articles, setArticles] = useState<Article[]>([]);
+    const [recentGlobalComments, setRecentGlobalComments] = useState<CommentItem[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
-    const [userProfile, setUserProfile] = useState<any>(null);
+    const [userProfile, setUserProfile] = useState<Profile | null>(null);
     const [viewMode, setViewMode] = useState<'dashboard' | 'articles' | 'notifications'>('dashboard');
 
     // UI States
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
-    const [selectedArticle, setSelectedArticle] = useState<any>(null);
-    const [articleComments, setArticleComments] = useState<any[]>([]);
+    const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+    const [articleComments, setArticleComments] = useState<CommentItem[]>([]);
 
     // Likes & Inputs
     const [userLikedPosts, setUserLikedPosts] = useState<string[]>([]);
-    const [commentInputs, setCommentInputs] = useState<{ [key: string]: string }>({});
-    const [replyTo, setReplyTo] = useState<any | null>(null);
+    const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+    const [replyTo, setReplyTo] = useState<CommentItem | null>(null);
 
     // Admin & Notification
     const [isAdmin, setIsAdmin] = useState(false);
     const [showAdminModal, setShowAdminModal] = useState(false);
     const [notification, setNotification] = useState<string | null>(null);
     const [announcement, setAnnouncement] = useState<string | null>(null);
-    const [notificationHistory, setNotificationHistory] = useState<any[]>([]);
+    const [notificationHistory, setNotificationHistory] = useState<NotificationItem[]>([]);
     const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
     const [newPost, setNewPost] = useState({ title: '', content: '' });
 
@@ -82,7 +124,7 @@ export default function Dashboard() {
         });
     };
 
-    const hydrateNotification = (notification: any, readIds: string[]) => ({
+    const hydrateNotification = (notification: { id: string | number; content: string; type: string; created_at: string; [key: string]: unknown }, readIds: string[]) => ({
         ...notification,
         read: readIds.includes(String(notification.id))
     });
@@ -92,34 +134,58 @@ export default function Dashboard() {
         router.push('/auth');
     };
 
-    const fetchAllData = async () => {
+    const isInvalidRefreshError = (error: unknown) => {
+        if (typeof error !== 'object' || error === null) return false;
+        const message = (error as { message?: unknown }).message;
+        return typeof message === 'string' && /refresh token/i.test(message);
+    };
+
+    const handleInvalidSession = async (error?: unknown) => {
+        console.warn('Invalid refresh token detected:', error);
+        await supabase.auth.signOut();
+        router.push('/auth');
+    };
+
+    const fetchAllData = useCallback(async () => {
         try {
             const storedReadIds = loadReadNotifications();
             setReadNotificationIds(storedReadIds);
 
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-                setUserProfile({ ...user, ...profile });
-
-                const isAdminUser = profile?.role === 'admin' || profile?.is_admin;
-                const userRole = isAdminUser ? 'Admin' : 'User';
-                setIsAdmin(!!isAdminUser);
-
-                const welcomeMsg = `Greetings! You are currently logged in as ${userRole}.`;
-                setAnnouncement(welcomeMsg);
-
-                setNotificationHistory(prev => {
-                    if (prev.find(n => n.content === welcomeMsg)) return prev;
-                    return [{ id: 'welcome', content: welcomeMsg, type: 'system', created_at: new Date().toISOString(), read: storedReadIds.includes('welcome') }, ...prev];
-                });
+            const { data, error } = await supabase.auth.getUser();
+            if (error) {
+                if (isInvalidRefreshError(error)) {
+                    await handleInvalidSession(error);
+                    return;
+                }
+                throw error;
             }
+
+            const user = data?.user;
+            if (!user) {
+                await handleInvalidSession();
+                return;
+            }
+
+            const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+            setUserProfile({ id: user.id, email: user.email ?? undefined, ...(profile ?? {}) });
+
+            const isAdminUser = profile?.role === 'admin' || profile?.is_admin;
+            const userRole = isAdminUser ? 'Admin' : 'User';
+            setIsAdmin(!!isAdminUser);
+
+            const welcomeMsg = `Greetings! You are currently logged in as ${userRole}.`;
+            setAnnouncement(welcomeMsg);
+
+            setNotificationHistory(prev => {
+                if (prev.find(n => n.content === welcomeMsg)) return prev;
+                return [{ id: 'welcome', content: welcomeMsg, type: 'system', created_at: new Date().toISOString(), read: storedReadIds.includes('welcome') }, ...prev];
+            });
 
             const { data: artData } = await supabase.from('articles').select('*').order('created_at', { ascending: false });
             if (artData) setArticles(artData);
 
             const { data: comData } = await supabase.from('article_comments').select(`id, content, created_at, articles ( title )`).order('created_at', { ascending: false }).limit(10);
-            if (comData) setRecentGlobalComments(comData);
+            if (comData) setRecentGlobalComments(comData as CommentItem[]);
 
             // Load notifications/announcements from database
             const { data: notifData } = await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(20);
@@ -132,10 +198,14 @@ export default function Dashboard() {
                     return [...newNotifs, ...prev].slice(0, 50); // Keep last 50
                 });
             }
-        } catch (error) {
+        } catch (error: unknown) {
+            if (isInvalidRefreshError(error)) {
+                await handleInvalidSession(error);
+                return;
+            }
             console.error("Error fetching data:", error);
         }
-    };
+    }, []);
 
     // BROADCAST HANDLER
     const sendEmailToAllUsers = async (subject: string, message: string) => {
@@ -147,7 +217,7 @@ export default function Dashboard() {
             });
 
             const text = await response.text();
-            let data: any;
+            let data: unknown;
             try {
                 data = text ? JSON.parse(text) : {};
             } catch {
@@ -156,13 +226,15 @@ export default function Dashboard() {
             }
 
             if (!response.ok) {
-                throw new Error(data?.error || 'Email service failed');
+                const parsed = data as { error?: string };
+                return { error: parsed?.error || 'Email service failed' };
             }
 
-            return data;
-        } catch (error: any) {
+            return data as { error?: string; success?: boolean; sentCount?: number; totalRecipients?: number; partialFailure?: boolean; failedCount?: number; message?: string };
+        } catch (error: unknown) {
             console.error('Broadcast email error:', error);
-            return { error: error.message || 'Broadcast email failed' };
+            const message = error instanceof Error ? error.message : String(error);
+            return { error: message || 'Broadcast email failed' };
         }
     };
 
@@ -193,14 +265,15 @@ export default function Dashboard() {
             const emailResult = await sendEmailToAllUsers('Vibe Announcement', msg);
 
             setAnnouncement(msg);
-            setNotification(emailResult?.error ? `⚠️ Announcement posted, email failed: ${emailResult.error}` : `📢 Broadcast sent to all users`);
-            setNotificationHistory(prev => [{ ...newNotif, read: false }, ...prev].slice(0, 50));
+            const emailMsg = emailResult?.partialFailure ? `⚠️ Announcement posted, some emails failed: ${emailResult.message}` : emailResult?.error ? `⚠️ Announcement posted, email failed: ${emailResult.error}` : `📢 Broadcast sent to all users`;
+            setNotification(emailMsg);
             setShowNotifications(true);
             await fetchAllData();
 
             setAdminUpdateInput("");
-        } catch (error: any) {
-            setNotification("❌ Error: " + (error?.message || "Failed to send broadcast"));
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            setNotification("❌ Error: " + (message || "Failed to send broadcast"));
             console.error("Broadcast error:", error);
         } finally {
             setBroadcastLoading(false);
@@ -249,20 +322,16 @@ export default function Dashboard() {
                 setNotification("⚠️ Article published, but notification failed: " + notifError.message);
                 console.warn("Notification failed:", notifError.message);
             } else {
-                const emailResult = await sendEmailToAllUsers(
-                    `New Article Published: ${publishedArticle.title}`,
-                    `A new article has been posted on Vibe:\n\n${publishedArticle.title}\n\n${publishedArticle.content}`
-                );
-
-                setNotification(emailResult?.error ? `⚠️ Article posted, email failed: ${emailResult.error}` : '✅ Article published and email sent to users.');
+                setNotification('✅ Article published and notification created.');
             }
 
             setNewPost({ title: '', content: '' });
             setShowAdminModal(false);
             setTimeout(() => setNotification(null), 4000);
             await fetchAllData();
-        } catch (error: any) {
-            setNotification("❌ Error: " + (error?.message || "Unexpected error"));
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            setNotification("❌ Error: " + (message || "Unexpected error"));
             setTimeout(() => setNotification(null), 5000);
             console.error("Publish error:", error);
         }
@@ -304,11 +373,15 @@ export default function Dashboard() {
         };
     }, []);
 
-    useEffect(() => { 
-        fetchAllData(); 
-    }, []);
+    useEffect(() => {
+        const load = async () => {
+            await fetchAllData();
+        };
 
-    const handleShare = async (art: any) => {
+        void load();
+    }, [fetchAllData]);
+
+    const handleShare = async (art: Article) => {
         if (navigator.share) {
             try {
                 await navigator.share({ title: art.title, text: `Check out this vibe: ${art.title}`, url: window.location.href });
@@ -319,18 +392,18 @@ export default function Dashboard() {
         }
     };
 
-    const openFullView = async (art: any) => {
+    const openFullView = async (art: Article) => {
         setSelectedArticle(art);
         const { data } = await supabase.from('article_comments').select('*').eq('article_id', art.id).order('created_at', { ascending: true });
-        if (data) setArticleComments(data);
+        if (data) setArticleComments(data as CommentItem[]);
     };
 
     const handleLikeArticle = async (articleId: string, currentLikes: number) => {
         const isLiked = userLikedPosts.includes(articleId);
         const newCount = isLiked ? Math.max(0, currentLikes - 1) : currentLikes + 1;
-        setArticles((prev: any[]) => prev.map(a => a.id === articleId ? { ...a, likes_count: newCount } : a));
+        setArticles((prev: Article[]) => prev.map(a => a.id === articleId ? { ...a, likes_count: newCount } : a));
         if (selectedArticle?.id === articleId) {
-            setSelectedArticle((prev: any) => ({ ...prev, likes_count: newCount }));
+            setSelectedArticle((prev: Article | null) => prev ? { ...prev, likes_count: newCount } : prev);
         }
         setUserLikedPosts(prev => isLiked ? prev.filter(id => id !== articleId) : [...prev, articleId]);
         await supabase.from('articles').update({ likes_count: newCount }).eq('id', articleId);
@@ -347,16 +420,16 @@ export default function Dashboard() {
             parent_id: parentId
         });
         if (!error) {
-            setArticles((prev: any[]) => prev.map(a => a.id === articleId ? { ...a, comment_count: (a.comment_count || 0) + 1 } : a));
+            setArticles((prev: Article[]) => prev.map(a => a.id === articleId ? { ...a, comment_count: (a.comment_count || 0) + 1 } : a));
             if (selectedArticle?.id === articleId) {
-                setSelectedArticle((prev: any) => ({ ...prev, comment_count: (prev.comment_count || 0) + 1 }));
+                setSelectedArticle((prev: Article | null) => prev ? { ...prev, comment_count: (prev.comment_count || 0) + 1 } : prev);
             }
             const currentArt = articles.find(a => a.id === articleId);
             await supabase.from('articles').update({ comment_count: (currentArt?.comment_count || 0) + 1 }).eq('id', articleId);
             setCommentInputs(prev => ({ ...prev, [articleId]: "" }));
             setReplyTo(null);
             const { data } = await supabase.from('article_comments').select('*').eq('article_id', articleId).order('created_at', { ascending: true });
-            if (data) setArticleComments(data);
+            if (data) setArticleComments(data as CommentItem[]);
         }
     };
 
@@ -571,18 +644,18 @@ export default function Dashboard() {
                                         <div>
                                             <span className="inline-flex rounded-full bg-purple-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.35em] text-purple-200">Dashboard overview</span>
                                             <h2 className="mt-4 text-4xl font-black tracking-tight text-white">Welcome back, {userProfile?.full_name || 'creator'}</h2>
-                                            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400">Everything you need to manage articles, notifications, and profile updates in one beautiful control panel.</p>
+                                            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400">Explore your personalized dashboard and stay updated with the latest news and activities.</p>
                                         </div>
-                                        <div className="grid gap-4 sm:grid-cols-3">
-                                            <div className="rounded-3xl border border-white/10 bg-[#090909] p-5 text-center">
+                                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                                            <div className="rounded-3xl border border-white/10 bg-[#090909] p-5 text-center min-w-0">
                                                 <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400">Unread</p>
                                                 <p className="mt-3 text-3xl font-black text-white">{notificationHistory.filter((n) => !n.read).length}</p>
                                             </div>
-                                            <div className="rounded-3xl border border-white/10 bg-[#090909] p-5 text-center">
+                                            <div className="rounded-3xl border border-white/10 bg-[#090909] p-5 text-center min-w-0">
                                                 <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400">Articles</p>
                                                 <p className="mt-3 text-3xl font-black text-white">{articles.length}</p>
                                             </div>
-                                            <div className="rounded-3xl border border-white/10 bg-[#090909] p-5 text-center">
+                                            <div className="rounded-3xl border border-white/10 bg-[#090909] p-5 text-center min-w-0">
                                                 <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400">Comments</p>
                                                 <p className="mt-3 text-3xl font-black text-white">{recentGlobalComments.length}</p>
                                             </div>
@@ -663,11 +736,11 @@ export default function Dashboard() {
                                                 <h3 className="text-3xl font-black leading-tight tracking-tight text-white cursor-pointer transition-colors hover:text-purple-300" onClick={() => openFullView(art)}>{art.title}</h3>
                                                 <p className="mt-3 text-xs uppercase tracking-[0.35em] text-purple-300">{art.type || 'Article'}</p>
                                             </div>
-                                            <div className="rounded-3xl bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-[0.35em] text-slate-300">{new Date(art.created_at).toLocaleDateString()}</div>
+                                            <div className="rounded-3xl bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-[0.35em] text-slate-300">{new Date(art.created_at || new Date()).toLocaleDateString()}</div>
                                         </div>
-                                        <p className="text-sm leading-7 text-slate-400 mb-8 max-h-[8rem] overflow-hidden">{art.content}</p>
+                                        <p className="text-sm leading-7 text-slate-400 mb-8 max-w-prose max-h-[8rem] overflow-hidden">{art.content}</p>
                                         <div className="flex flex-wrap gap-3 text-[10px] font-black uppercase tracking-[0.35em] text-slate-400">
-                                            <button onClick={() => handleLikeArticle(art.id, art.likes_count)} className={`flex items-center gap-2 rounded-3xl border border-white/10 px-4 py-2 transition ${userLikedPosts.includes(art.id) ? 'bg-purple-600 text-white border-purple-500' : 'hover:border-purple-500/30 hover:bg-white/5'}`}>
+                                            <button onClick={() => handleLikeArticle(art.id, art.likes_count || 0)} className={`flex items-center gap-2 rounded-3xl border border-white/10 px-4 py-2 transition ${userLikedPosts.includes(art.id) ? 'bg-purple-600 text-white border-purple-500' : 'hover:border-purple-500/30 hover:bg-white/5'}`}>
                                                 <Heart size={16} fill={userLikedPosts.includes(art.id) ? 'currentColor' : 'none'} /> {art.likes_count || 0}
                                             </button>
                                             <button onClick={() => openFullView(art)} className="flex items-center gap-2 rounded-3xl border border-white/10 px-4 py-2 hover:border-purple-500/30 hover:bg-white/5 transition text-slate-300">
@@ -692,7 +765,7 @@ export default function Dashboard() {
                                     <div className="space-y-4">
                                         {recentGlobalComments.slice(0, 5).map((c) => (
                                             <div key={c.id} className="rounded-3xl border border-white/10 bg-white/5 p-4 transition hover:border-purple-500/30 hover:bg-white/10">
-                                                <p className="text-[10px] font-black uppercase tracking-[0.35em] text-purple-300 truncate">{c.articles?.title}</p>
+                                                <p className="text-[10px] font-black uppercase tracking-[0.35em] text-purple-300 truncate">{c.articles?.[0]?.title}</p>
                                                 <p className="mt-3 text-sm leading-6 text-slate-300 italic">"{c.content}"</p>
                                             </div>
                                         ))}
@@ -786,8 +859,8 @@ export default function Dashboard() {
                             </button>
                             <h2 className="text-4xl md:text-6xl font-black leading-tight tracking-tight text-white">{selectedArticle.title}</h2>
                             <div className="mt-8 h-1 w-28 rounded-full bg-gradient-to-r from-purple-500 to-fuchsia-500" />
-                            <div className="prose prose-invert max-w-none mt-10">
-                                <p className="text-xl text-slate-300 leading-8 whitespace-pre-wrap">{selectedArticle.content}</p>
+                            <div className="prose prose-invert max-w-prose mt-10">
+                                <p className="text-base text-slate-300 leading-8 whitespace-pre-wrap">{selectedArticle.content}</p>
                             </div>
                         </div>
                         <div className="w-full md:w-[420px] flex h-full flex-col bg-[#090b12] border-l border-white/10">
@@ -797,7 +870,7 @@ export default function Dashboard() {
                                         <h3 className="text-[10px] uppercase tracking-[0.35em] text-purple-400">Discussion</h3>
                                         <p className="mt-2 text-xs font-black uppercase tracking-[0.35em] text-slate-500">{articleComments.length} comments</p>
                                     </div>
-                                    <button onClick={() => handleLikeArticle(selectedArticle.id, selectedArticle.likes_count)} className={`flex items-center gap-2 rounded-3xl px-4 py-2 text-sm font-black transition ${userLikedPosts.includes(selectedArticle.id) ? 'bg-purple-500 text-white' : 'border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'}`}>
+                                    <button onClick={() => handleLikeArticle(selectedArticle.id, selectedArticle.likes_count || 0)} className={`flex items-center gap-2 rounded-3xl px-4 py-2 text-sm font-black transition ${userLikedPosts.includes(selectedArticle.id) ? 'bg-purple-500 text-white' : 'border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'}`}>
                                         <Heart fill={userLikedPosts.includes(selectedArticle.id) ? 'white' : 'none'} size={16} />
                                         <span>{selectedArticle.likes_count || 0}</span>
                                     </button>
@@ -805,11 +878,11 @@ export default function Dashboard() {
                             </div>
                             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
                                 {articleComments.length > 0 ? (
-                                    articleComments.map((comment: any) => (
+                                    articleComments.map((comment: CommentItem) => (
                                         <div key={comment.id} className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/10">
                                             <p className="text-sm leading-7 text-slate-200">{comment.content}</p>
                                             <div className="mt-4 flex items-center justify-between text-[10px] uppercase tracking-[0.35em] text-slate-500">
-                                                <span>{new Date(comment.created_at).toLocaleDateString()}</span>
+                                                <span>{new Date(comment.created_at || new Date()).toLocaleDateString()}</span>
                                                 <button onClick={() => setReplyTo(comment)} className="flex items-center gap-1 text-purple-300 hover:text-white transition"><Reply size={12} /> Reply</button>
                                             </div>
                                         </div>

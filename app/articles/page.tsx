@@ -86,7 +86,18 @@ export default function ArticleDetailPage({ params }: PageProps) {
     async function handlePost(parentId: string | null = null) {
         if (!commentInput.trim()) return;
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        if (authError) {
+            console.error('Auth getUser failed:', authError);
+            if (/refresh token/i.test(authError.message || '')) {
+                await supabase.auth.signOut();
+                window.location.href = '/auth';
+                return;
+            }
+            alert('Session expired. Please sign in again.');
+            return;
+        }
+        const user = authData?.user;
 
         const commentData: any = {
             article_id: id,
@@ -95,10 +106,10 @@ export default function ArticleDetailPage({ params }: PageProps) {
             user_id: user ? user.id : null
         };
 
-        const { error } = await supabase.from('article_comments').insert(commentData);
+        const { error: insertError } = await supabase.from('article_comments').insert(commentData);
 
-        if (error) {
-            alert("Error: " + error.message);
+        if (insertError) {
+            alert("Error: " + insertError.message);
         } else {
             setCommentInput("");
             setActiveReplyId(null);
@@ -131,7 +142,7 @@ export default function ArticleDetailPage({ params }: PageProps) {
 
                     <h1 className="text-4xl font-black mb-6 tracking-tighter leading-tight italic uppercase">{article?.title}</h1>
                     <div className="w-12 h-1 bg-purple-600 mb-6"></div>
-                    <p className="text-gray-400 leading-relaxed mb-8 text-sm font-medium">{article?.content}</p>
+                    <p className="text-gray-400 mb-8 max-w-prose text-sm leading-7 md:text-base md:leading-8 font-medium">{article?.content}</p>
 
                     <div className="flex gap-8 pt-6 border-t border-white/5 text-gray-500 text-[10px] font-black uppercase tracking-[0.15em]">
                         <button

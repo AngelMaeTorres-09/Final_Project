@@ -28,19 +28,36 @@ export default function ProfilePage() {
         fetchProfile();
     }, []);
 
+    const isInvalidRefreshError = (error: any) =>
+        typeof error?.message === 'string' && /refresh token/i.test(error.message);
+
+    const handleInvalidSession = async (error?: any) => {
+        console.warn('Invalid refresh token detected:', error);
+        await supabase.auth.signOut();
+        window.location.href = '/auth';
+    };
+
     const fetchProfile = async () => {
         try {
             setLoading(true);
-            const { data: { user } } = await supabase.auth.getUser();
+            const { data: authData, error: authError } = await supabase.auth.getUser();
+            if (authError) {
+                if (isInvalidRefreshError(authError)) {
+                    await handleInvalidSession(authError);
+                    return;
+                }
+                throw authError;
+            }
+            const user = authData?.user;
             if (!user) return;
 
-            let { data, error } = await supabase
+            let { data: profileData, error: profileError } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', user.id)
                 .single();
 
-            if (error && error.code === 'PGRST116') {
+            if (profileError && profileError.code === 'PGRST116') {
                 const newProfile = {
                     id: user.id,
                     full_name: user.email?.split('@')[0] || 'New User',
@@ -56,12 +73,12 @@ export default function ProfilePage() {
                     .select()
                     .single();
 
-                if (!createError) data = createdData;
+                if (!createError) profileData = createdData;
             }
 
-            if (data) {
-                setProfile(data);
-                setUpdatedFields(data); // This loads existing DB values into the input fields
+            if (profileData) {
+                setProfile(profileData);
+                setUpdatedFields(profileData); // This loads existing DB values into the input fields
             }
         } catch (error) {
             console.error("Profile fetch error:", error);
@@ -78,7 +95,15 @@ export default function ProfilePage() {
         try {
             setUploading(true);
             if (!event.target.files || event.target.files.length === 0) return;
-            const { data: { user } } = await supabase.auth.getUser();
+            const { data, error } = await supabase.auth.getUser();
+            if (error) {
+                if (isInvalidRefreshError(error)) {
+                    await handleInvalidSession(error);
+                    return;
+                }
+                throw error;
+            }
+            const user = data?.user;
             if (!user) throw new Error("No user found.");
 
             const file = event.target.files[0];
@@ -118,7 +143,15 @@ export default function ProfilePage() {
     const handleSyncProfile = async () => {
         setLoading(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
+            const { data: authData, error: authError } = await supabase.auth.getUser();
+            if (authError) {
+                if (isInvalidRefreshError(authError)) {
+                    await handleInvalidSession(authError);
+                    return;
+                }
+                throw authError;
+            }
+            const user = authData?.user;
             if (!user) return;
 
             // We prepare the update object specifically with the fields 

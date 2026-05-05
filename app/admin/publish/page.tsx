@@ -53,11 +53,12 @@ export default function AdminPublish() {
             if (notifError) {
                 alert("Article published, but notification failed: " + notifError.message);
                 console.warn("Notification save failed:", notifError.message);
-            } else {
-                alert("Article published successfully! Notification was created.");
             }
 
-            // 3. Clear form and redirect
+            // 3. Complete publish flow without sending email
+            alert("Article published successfully! Notification created.");
+
+            // 4. Clear form and redirect
             setTitle('');
             setContent('');
             router.push('/articles');

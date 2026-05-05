@@ -15,14 +15,37 @@ export default function AuthPage() {
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false);
 
+    const isInvalidRefreshError = (error: any) =>
+        typeof error?.message === 'string' && /refresh token/i.test(error.message);
+
+    const handleInvalidSession = async (error?: any) => {
+        console.warn('Invalid refresh token detected:', error);
+        await supabase.auth.signOut();
+        setIsLoggedIn(false);
+        setMessage('Session expired. Please log in again.');
+        setLoading(false);
+        router.push('/auth');
+    };
+
     useEffect(() => {
         const checkUser = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                setIsLoggedIn(true);
-                setEmail(session.user.email || '');
+            try {
+                const { data, error } = await supabase.auth.getSession();
+                if (error) throw error;
+                const session = data?.session;
+                if (session) {
+                    setIsLoggedIn(true);
+                    setEmail(session.user.email || '');
+                }
+            } catch (error: any) {
+                if (isInvalidRefreshError(error)) {
+                    await handleInvalidSession(error);
+                    return;
+                }
+                console.error('Session check failed:', error);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
 
         const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {

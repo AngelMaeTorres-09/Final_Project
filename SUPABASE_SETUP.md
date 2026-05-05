@@ -166,4 +166,42 @@ Make sure you have these in your `.env.local`:
 ```
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+```
+
+**Note:** The `SUPABASE_SERVICE_ROLE_KEY` is required for the email broadcast functionality. You can find it in your Supabase project settings under "API Keys".
+
+## Email Setup
+
+The application includes automatic email notifications when publishing articles or sending announcements. To enable actual email sending:
+
+### ✅ Resend Setup (Currently Configured)
+1. **API Key**: Already added to `.env.local`
+2. **Domain**: Using Resend's free domain (`resend.dev`) - no setup needed!
+3. **From Address**: `Vibe <onboarding@resend.dev>`
+
+### 📧 Current Email Setup
+- **Sending Domain**: `resend.dev` (provided by Resend)
+- **From Address**: `Vibe <onboarding@resend.dev>`
+- **Status**: Ready to send emails immediately!
+
+### Optional: Custom Domain (Later)
+If you want professional branding later:
+- Buy a domain from Namecheap/GoDaddy (~$10/year)
+- Verify it in Resend dashboard
+- Update the `from` address in `/app/api/broadcast/route.ts`
+
+### Alternative Email Services
+If you prefer other services:
+- **SendGrid**: Similar setup with API key
+- **Mailgun**: SMTP or API integration
+- **Supabase Edge Function**: Create custom email function
+
+### Environment Variables
+```
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+RESEND_API_KEY=your_resend_api_key
+```
 ```
