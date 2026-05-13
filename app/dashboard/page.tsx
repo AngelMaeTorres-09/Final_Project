@@ -124,7 +124,7 @@ export default function Dashboard() {
         });
     };
 
-    const hydrateNotification = (notification: { id: string | number; content: string; type: string; created_at: string; [key: string]: unknown }, readIds: string[]) => ({
+    const hydrateNotification = (notification: { id: string | number; content: string; type: string; created_at: string;[key: string]: unknown }, readIds: string[]) => ({
         ...notification,
         read: readIds.includes(String(notification.id))
     });
@@ -132,6 +132,36 @@ export default function Dashboard() {
     const handleLogout = async () => {
         await supabase.auth.signOut();
         router.push('/auth');
+    };
+
+    const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file || !userProfile) return;
+
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${userProfile.id}-${Date.now()}.${fileExt}`;
+
+            // Upload to Supabase 'avatars' bucket
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(fileName, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(fileName);
+
+            // Update the profiles table
+            await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', userProfile.id);
+
+            // Update local state to show image immediately
+            setUserProfile({ ...userProfile, avatar_url: publicUrl });
+            alert("Vibe updated! 📸");
+        } catch (err) {
+            alert("Upload failed. Ensure your 'avatars' bucket is Public in Supabase.");
+        }
     };
 
     const isInvalidRefreshError = (error: unknown) => {
@@ -206,6 +236,8 @@ export default function Dashboard() {
             console.error("Error fetching data:", error);
         }
     }, []);
+
+    
 
     // BROADCAST HANDLER
     const sendEmailToAllUsers = async (subject: string, message: string) => {
@@ -343,10 +375,10 @@ export default function Dashboard() {
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
                 const msg = payload.new.content;
                 const type = payload.new.type;
-                
+
                 // Show notification at top
                 setNotification(msg);
-                
+
                 // Add to history
                 setNotificationHistory(prev => [{
                     id: payload.new.id,
@@ -355,21 +387,21 @@ export default function Dashboard() {
                     created_at: payload.new.created_at,
                     read: false
                 }, ...prev].slice(0, 50)); // Keep last 50
-                
+
                 // Update announcement bar for announcements
                 if (type === 'announcement') {
                     setAnnouncement(msg);
                 }
-                
+
                 setTimeout(() => setNotification(null), 5000);
             })
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'articles' }, () => {
                 fetchAllData();
             })
             .subscribe();
-        
-        return () => { 
-            supabase.removeChannel(channel); 
+
+        return () => {
+            supabase.removeChannel(channel);
         };
     }, []);
 
@@ -554,17 +586,43 @@ export default function Dashboard() {
                                 <ChevronDown size={16} className={`transition-transform duration-300 ${isProfileOpen ? 'rotate-180' : ''}`} />
                             </button>
                             {isProfileOpen && (
-                                <div className="absolute top-full right-0 mt-4 w-56 rounded-[2rem] border border-white/10 bg-[#090909] p-4 shadow-2xl shadow-black/50">
-                                    <div className="mb-4 border-b border-white/10 pb-3">
-                                        <p className="truncate text-sm font-black text-white">{userProfile?.full_name || 'User'}</p>
-                                        <p className="text-[10px] uppercase tracking-[0.35em] text-purple-400">{isAdmin ? 'Admin' : 'User'}</p>
+                                <div className="absolute top-full right-0 mt-4 w-64 rounded-[2rem] border border-white/10 bg-[#090909] p-5 shadow-2xl shadow-black/50 z-[100]">
+                                    <div className="mb-6 flex flex-col items-center text-center border-b border-white/10 pb-4">
+
+                                        {/* 1. THE PROFILE CIRCLE */}
+                                        <div className="h-20 w-20 overflow-hidden rounded-full border-2 border-purple-500/30 bg-gradient-to-tr from-purple-500 to-sky-500 p-1 mb-2">
+                                            {userProfile?.avatar_url ? (
+                                                <img src={userProfile.avatar_url} alt="Profile" className="h-full w-full rounded-full object-cover" />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center">
+                                                    <User size={32} />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* 2. CHANGE PHOTO BUTTON (Directly Below Circle) */}
+                                        <label
+                                            htmlFor="avatar-upload"
+                                            className="mb-4 cursor-pointer text-[11px] font-black uppercase tracking-widest text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+                                        >
+                                            <Plus size={12} /> Change Photo
+                                        </label>
+                                        <input type="file" id="avatar-upload" className="hidden" accept="image/*" onChange={handleAvatarUpload} />
+
+                                        {/* 3. USER INFO */}
+                                        <p className="truncate text-base font-black text-white">{userProfile?.full_name || 'User'}</p>
+                                        <p className="text-[10px] uppercase tracking-[0.35em] text-gray-500 font-bold">{isAdmin ? 'Admin' : 'User'}</p>
                                     </div>
-                                    <button onClick={() => router.push('/profile')} className="mb-2 flex w-full items-center gap-3 rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10 transition">
-                                        <User size={16} /> Profile
-                                    </button>
-                                    <button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-300 hover:bg-red-500/20 transition">
-                                        <LogOut size={16} /> Logout
-                                    </button>
+
+                                    {/* REST OF YOUR BUTTONS (Profile, Logout) */}
+                                    <div className="space-y-2">
+                                        <button onClick={() => router.push('/profile')} className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10 transition">
+                                            <User size={16} /> Profile Settings
+                                        </button>
+                                        <button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-300 hover:bg-red-500/20 transition">
+                                            <LogOut size={16} /> Logout
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
